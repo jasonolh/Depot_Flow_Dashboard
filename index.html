@@ -27,8 +27,8 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
 /* === CONFIG === */
-const API_BASE = "https://api.eu.navixy.com/v2"; // or us.navixy.com if account is US
-const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // your key
+const API_BASE = "https://api.eu.navixy.com/v2"; // change if US server
+const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // your API key
 const REFRESH_MS = 30000;
 const DWELL_THRESHOLD = 30; // minutes
 const LOOKBACK_HOURS = 24;
@@ -56,6 +56,10 @@ async function getStates(ids) {
   const res = await apiPost("/tracker/get_states", { trackers: ids });
   return res.success ? res.states : {};
 }
+async function getZones() {
+  const res = await apiPost("/zone/list", {});
+  return res.success ? res.list : [];
+}
 async function getEvents() {
   const to = new Date();
   const from = new Date(to.getTime() - LOOKBACK_HOURS*3600*1000);
@@ -67,36 +71,37 @@ async function getEvents() {
   });
   return res.success ? res.list : [];
 }
+async function checkPoint(lat,lng) {
+  const res = await apiPost("/zone/check_point", { lat, lng });
+  return res.success ? res.list : [];
+}
 
-/* === Dwell computation === */
-function computeCurrent(states, events) {
+/* === Build live zones map === */
+async function computeCurrent(states, events, zones) {
   const now=new Date();
-  const latestEnter={}; // tracker+zone -> time
+  const latestEnter={};
   events.forEach(e=>{
     const tid=e.tracker_id;
     const zid=e.extra?.zone_ids?.[0];
-    const zlabel=e.extra?.zone_labels?.[0];
-    if (!zid || EXCLUDED_ZONES.includes(zlabel)) return;
-    const key=`${tid}_${zid}`;
-    latestEnter[key]=new Date(e.time);
+    if (!zid) return;
+    latestEnter[`${tid}_${zid}`]=new Date(e.time);
   });
 
-  const zones={};
+  const zonesMap={};
   for (const tid in states) {
-    const st=states[tid];
-    const zoneIds=st?.gps?.zone_ids||[];
-    const zoneLabels=st?.gps?.zone_labels||[];
-    zoneIds.forEach((zid,i)=>{
-      const zlabel=zoneLabels[i]||"Unknown";
-      if (EXCLUDED_ZONES.includes(zlabel)) return;
-      const key=`${tid}_${zid}`;
+    const loc=states[tid]?.gps?.location;
+    if (!loc) continue;
+    const inZones=await checkPoint(loc.lat,loc.lng); // real-time zone check
+    inZones.forEach(z=>{
+      if (EXCLUDED_ZONES.includes(z.label)) return;
+      const key=`${tid}_${z.id}`;
       const since=latestEnter[key]||now;
       const mins=Math.round((now-since)/60000);
-      zones[zlabel]=zones[zlabel]||[];
-      zones[zlabel].push({tid,mins});
+      zonesMap[z.label]=zonesMap[z.label]||[];
+      zonesMap[z.label].push({tid,mins});
     });
   }
-  return zones;
+  return zonesMap;
 }
 
 /* === Formatting === */
@@ -148,8 +153,9 @@ async function update() {
     s.textContent="Updating…";
     const trackers=await getTrackers();
     const states=await getStates(trackers.map(t=>t.id));
+    const zonesList=await getZones();
     const events=await getEvents();
-    const zones=computeCurrent(states,events);
+    const zones=await computeCurrent(states, events, zonesList);
     renderSections(zones,trackers);
     renderMap(states,trackers,zones);
     s.textContent=`Updated at ${new Date().toLocaleTimeString()}`;

@@ -2,91 +2,80 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Depot Live Dashboard</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Depot Dashboard Test</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
-  body { font-family: Arial, sans-serif; margin:0; }
-  header { padding: 12px 16px; border-bottom: 1px solid #e5e5e5; }
-  h1 { font-size: 20px; margin: 0; }
-  main { padding: 16px; max-width: 1200px; margin: auto; }
-  #status { margin-bottom: 10px; font-size: 14px; color:#444; }
-  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill,minmax(240px,1fr)); }
-  .card { border: 1px solid #ccc; border-radius: 6px; padding: 12px; background:#fafafa; }
-  .card h3 { margin: 0 0 8px; font-size: 16px; }
-  .truck { display: flex; justify-content: space-between; font-weight: bold; padding:4px 0; }
-  .ok { color: green; }
-  .warn { color: red; }
-  #map { height: 420px; margin-top: 16px; border-radius: 6px; border:1px solid #ddd; }
+  body { font-family: Arial, sans-serif; margin:0; padding:20px; }
+  h1 { font-size: 20px; }
+  #sections { display:flex; gap:20px; flex-wrap:wrap; margin-top:20px; }
+  .card { border:1px solid #ccc; border-radius:6px; padding:12px; min-width:200px; background:#fafafa; }
+  .ok { color:green; }
+  .warn { color:red; }
+  #map { margin-top:20px; height:400px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Depot Live Dashboard</h1>
-</header>
-<main>
-  <div id="status">Loading…</div>
-  <div class="grid" id="sections"></div>
-  <div id="map"></div>
-</main>
+<h1>Depot Dashboard (PlayCode test)</h1>
+<div id="status">Loading…</div>
+<div id="sections"></div>
+<div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-/* CONFIG */
-const API_BASE = "https://api.eu.navixy.com/v2"; // change to us.navixy.com if needed
+/* === CONFIG === */
+const API_BASE = "https://api.eu.navixy.com/v2"; // or us.navixy.com if your account is US
+const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // <-- your real key
 const REFRESH_MS = 30000;
-const DWELL_THRESHOLD_MIN = 30;
-const LOOKBACK_HOURS = 48;
+const DWELL_THRESHOLD = 30;   // minutes before warning
+const LOOKBACK_HOURS = 24;
 
-const qs = new URLSearchParams(location.search);
-const HASH = qs.get("session_key");
-if (!HASH) console.warn("No session_key in URL. Make sure Navixy passes it.");
+// Excluded zones
+const EXCLUDED_ZONES = [
+  "Fuel Stop - Denne Road",
+  "Fuel Station - Umlaas 3 Pumps",
+  "Route Notify - Durban South"
+];
 
-// API call helper
+/* === API helper === */
 function apiPost(path, body) {
   return fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: {
+    headers: { 
       "Content-Type": "application/json",
-      "Authorization": `NVX ${HASH}`
+      "Authorization": `NVX ${API_KEY}` 
     },
     body: JSON.stringify(body || {})
   }).then(r => r.json());
 }
 
-// Load trackers
+/* === Load trackers === */
 async function getTrackers() {
   const res = await apiPost("/tracker/list", {});
-  if (!res.success) throw new Error("tracker/list failed");
-  return res.list.map(t => ({ id: t.id, label: t.label || t.name || `#${t.id}` }));
+  return res.success ? res.list : [];
 }
 
-// Load last states
+/* === Load last positions === */
 async function getStates(ids) {
-  if (!ids.length) return {};
   const res = await apiPost("/tracker/get_states", { trackers: ids });
-  if (!res.success) throw new Error("tracker/get_states failed");
-  return res.states || {};
+  return res.success ? res.states : {};
 }
 
-// Load geofence events
+/* === Load geofence events === */
 async function getEvents() {
   const to = new Date();
-  const from = new Date(to.getTime() - LOOKBACK_HOURS * 3600 * 1000);
+  const from = new Date(to.getTime() - LOOKBACK_HOURS*3600*1000);
   const fmt = d => d.toISOString().slice(0,19).replace('T',' ');
   const res = await apiPost("/history/user/list", {
     from: fmt(from), to: fmt(to),
     events: ["inzone","outzone"],
     limit: 1000, ascending: true
   });
-  if (!res.success) throw new Error("history/user/list failed");
-  return res.list || [];
+  return res.success ? res.list : [];
 }
 
-// Compute dwell times
+/* === Compute dwell === */
 function computeDwell(events) {
-  const inside = {};
-  const zones = {};
+  const inside = {}, zones = {};
   events.sort((a,b)=> new Date(a.time)-new Date(b.time));
   for (const e of events) {
     const tid = e.tracker_id;
@@ -94,79 +83,92 @@ function computeDwell(events) {
     const zid = e.extra?.zone_ids?.[0];
     const zlabel = e.extra?.zone_labels?.[0] || "Unknown";
     if (!zid) continue;
+    if (EXCLUDED_ZONES.includes(zlabel)) continue; // skip excluded zones
+
     inside[tid] = inside[tid] || {};
     if (e.event==="inzone") inside[tid][zid] = { since: when, zlabel };
     else if (e.event==="outzone") delete inside[tid][zid];
   }
-  const now = new Date();
+  const now=new Date();
   for (const tid in inside) {
     for (const zid in inside[tid]) {
-      const entry = inside[tid][zid];
-      const mins = Math.round((now - entry.since)/60000);
-      zones[entry.zlabel] = zones[entry.zlabel] || [];
-      zones[entry.zlabel].push({ tid, since: entry.since, mins });
+      const entry=inside[tid][zid];
+      const mins=Math.round((now-entry.since)/60000);
+      zones[entry.zlabel]=zones[entry.zlabel]||[];
+      zones[entry.zlabel].push({tid,mins});
     }
   }
   return zones;
 }
 
-// Render dashboard
-function renderSections(zones, lookup) {
-  const c = document.getElementById("sections");
-  c.innerHTML="";
-  if (!Object.keys(zones).length) {
-    c.innerHTML="<div class='card'><h3>No trucks in depot</h3></div>";
-    return;
+/* === Format dwell time in hours and minutes === */
+function formatTime(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0) {
+    return `${h}h ${m}m`;
   }
-  for (const name of Object.keys(zones)) {
-    const list = zones[name];
-    const div = document.createElement("div");
+  return `${m}m`;
+}
+
+/* === Render sections === */
+function renderSections(zones, trackers) {
+  const c=document.getElementById("sections"); 
+  c.innerHTML="";
+  for (const zone in zones) {
+    if (EXCLUDED_ZONES.includes(zone)) continue; // skip unwanted zones
+
+    const div=document.createElement("div"); 
     div.className="card";
-    div.innerHTML=`<h3>${name} (${list.length})</h3>`;
-    list.forEach(t=>{
-      const label=lookup[t.tid]?.label||`#${t.tid}`;
-      const cls = t.mins>DWELL_THRESHOLD_MIN?"warn":"ok";
-      div.innerHTML+=`<div class="truck ${cls}"><span>${label}</span><span>${t.mins} min</span></div>`;
+    div.innerHTML=`<h3>${zone}</h3>`;
+
+    zones[zone].forEach(t=>{
+      const label=trackers.find(x=>x.id==t.tid)?.label||"#"+t.tid;
+      const cls=t.mins>DWELL_THRESHOLD?"warn":"ok";
+      const timeStr=formatTime(t.mins);
+      div.innerHTML+=`<div class="${cls}">${label}: ${timeStr}</div>`;
     });
     c.appendChild(div);
   }
 }
 
-// Render map
+/* === Render map === */
 let map, markers=[];
-function renderMap(states, lookup) {
+function renderMap(states, trackers, zones) {
   if (!map) {
     map=L.map("map").setView([0,0],2);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
   }
-  markers.forEach(m=>map.removeLayer(m));
-  markers=[];
+  markers.forEach(m=>map.removeLayer(m)); markers=[];
   const bounds=[];
   for (const tid in states) {
-    const gps=states[tid]?.gps;
-    if (!gps?.location) continue;
-    const label=lookup[tid]?.label||`#${tid}`;
-    const m=L.marker([gps.location.lat,gps.location.lng]).addTo(map).bindPopup(label);
-    markers.push(m); bounds.push([gps.location.lat,gps.location.lng]);
+    // only plot trucks currently in included zones
+    const inAnyZone = Object.values(zones).some(list => list.some(t => t.tid == tid));
+    if (!inAnyZone) continue;
+
+    const loc=states[tid]?.gps?.location; 
+    if (!loc) continue;
+    const label=trackers.find(x=>x.id==tid)?.label||"#"+tid;
+    const m=L.marker([loc.lat,loc.lng]).addTo(map).bindPopup(label);
+    markers.push(m); bounds.push([loc.lat,loc.lng]);
   }
   if (bounds.length) map.fitBounds(bounds,{padding:[30,30]});
 }
 
-// Update loop
+/* === Update loop === */
 async function update() {
-  const status=document.getElementById("status");
+  const s=document.getElementById("status");
   try {
-    status.textContent="Updating…";
+    s.textContent="Updating…";
     const trackers=await getTrackers();
-    const lookup=Object.fromEntries(trackers.map(t=>[t.id,t]));
     const events=await getEvents();
     const zones=computeDwell(events);
-    renderSections(zones,lookup);
+    renderSections(zones,trackers);
     const states=await getStates(trackers.map(t=>t.id));
-    renderMap(states,lookup);
-    status.textContent=`Updated ${new Date().toLocaleTimeString()}`;
+    renderMap(states,trackers,zones);
+    s.textContent=`Updated at ${new Date().toLocaleTimeString()}`;
   } catch(err) {
-    console.error(err); status.textContent="Error loading data";
+    console.error(err); s.textContent="Error: "+err;
   }
 }
 update(); setInterval(update,REFRESH_MS);

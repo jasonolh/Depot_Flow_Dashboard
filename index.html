@@ -2,20 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Depot Dashboard Test</title>
+<title>Depot Dashboard Live</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
   body { font-family: Arial, sans-serif; margin:0; padding:20px; }
   h1 { font-size: 20px; }
   #sections { display:flex; gap:20px; flex-wrap:wrap; margin-top:20px; }
-  .card { border:1px solid #ccc; border-radius:6px; padding:12px; min-width:200px; background:#fafafa; }
+  .card { border:1px solid #ccc; border-radius:6px; padding:12px; min-width:220px; background:#fafafa; }
   .ok { color:green; }
   .warn { color:red; }
-  #map { margin-top:20px; height:400px; }
+  #map { margin-top:20px; height:420px; }
 </style>
 </head>
 <body>
-<h1>Depot Dashboard </h1>
+<h1>Depot Dashboard – Live Zones</h1>
 <div id="status">Loading…</div>
 <div id="sections"></div>
 <div id="map"></div>
@@ -23,11 +23,11 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
 /* === CONFIG === */
-const API_BASE = "https://api.eu.navixy.com/v2"; // or us.navixy.com if your account is US
-const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // <-- your real key
-const REFRESH_MS = 1000;
-const DWELL_THRESHOLD = 5;   // minutes before warning
-const LOOKBACK_HOURS = 1;
+const API_BASE = "https://api.eu.navixy.com/v2"; // or us.navixy.com
+const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // <-- your key
+const REFRESH_MS = 30000;
+const DWELL_THRESHOLD = 30;   // minutes before red
+const LOOKBACK_HOURS = 12;
 
 // Excluded zones
 const EXCLUDED_ZONES = [
@@ -48,19 +48,15 @@ function apiPost(path, body) {
   }).then(r => r.json());
 }
 
-/* === Load trackers === */
+/* === Load trackers and zones === */
 async function getTrackers() {
   const res = await apiPost("/tracker/list", {});
   return res.success ? res.list : [];
 }
-
-/* === Load last positions === */
 async function getStates(ids) {
   const res = await apiPost("/tracker/get_states", { trackers: ids });
   return res.success ? res.states : {};
 }
-
-/* === Load geofence events === */
 async function getEvents() {
   const to = new Date();
   const from = new Date(to.getTime() - LOOKBACK_HOURS*3600*1000);
@@ -68,71 +64,75 @@ async function getEvents() {
   const res = await apiPost("/history/user/list", {
     from: fmt(from), to: fmt(to),
     events: ["inzone","outzone"],
-    limit: 1000, ascending: true
+    limit: 2000, ascending: true
   });
   return res.success ? res.list : [];
 }
 
-/* === Compute dwell === */
-function computeDwell(events) {
-  const inside = {}, zones = {};
-  events.sort((a,b)=> new Date(a.time)-new Date(b.time));
-  for (const e of events) {
-    const tid = e.tracker_id;
-    const when = new Date(e.time);
-    const zid = e.extra?.zone_ids?.[0];
-    const zlabel = e.extra?.zone_labels?.[0] || "Unknown";
-    if (!zid) continue;
-    if (EXCLUDED_ZONES.includes(zlabel)) continue; // skip excluded zones
+/* === Compute current dwell times === */
+function computeCurrent(events, states) {
+  const now = new Date();
+  const insideMap = {}; // trackerId -> {zone, since}
 
-    inside[tid] = inside[tid] || {};
-    if (e.event==="inzone") inside[tid][zid] = { since: when, zlabel };
-    else if (e.event==="outzone") delete inside[tid][zid];
+  // 1. Build from latest states (true current presence)
+  for (const tid in states) {
+    const st = states[tid];
+    const zones = st?.gps?.zone_ids || [];
+    zones.forEach(zid => {
+      const zlabel = st?.gps?.zone_labels?.[zones.indexOf(zid)] || "Unknown";
+      if (!EXCLUDED_ZONES.includes(zlabel)) {
+        insideMap[tid] = insideMap[tid] || {};
+        insideMap[tid][zid] = { since: now, zone: zlabel };
+      }
+    });
   }
-  const now=new Date();
-  for (const tid in inside) {
-    for (const zid in inside[tid]) {
-      const entry=inside[tid][zid];
-      const mins=Math.round((now-entry.since)/60000);
-      zones[entry.zlabel]=zones[entry.zlabel]||[];
-      zones[entry.zlabel].push({tid,mins});
+
+  // 2. Correct entry time using events
+  events.forEach(e => {
+    const tid = e.tracker_id;
+    const zid = e.extra?.zone_ids?.[0];
+    const zlabel = e.extra?.zone_labels?.[0];
+    if (!zid || !insideMap[tid] || !insideMap[tid][zid]) return;
+    if (e.event==="inzone") {
+      insideMap[tid][zid].since = new Date(e.time); // use real enter time
+    }
+  });
+
+  // 3. Convert to zones map
+  const zones = {};
+  for (const tid in insideMap) {
+    for (const zid in insideMap[tid]) {
+      const entry = insideMap[tid][zid];
+      const mins = Math.round((now - entry.since)/60000);
+      zones[entry.zone] = zones[entry.zone] || [];
+      zones[entry.zone].push({tid, mins});
     }
   }
   return zones;
 }
 
-/* === Format dwell time in hours and minutes === */
-function formatTime(totalMinutes) {
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h > 0) {
-    return `${h}h ${m}m`;
-  }
-  return `${m}m`;
+/* === Format dwell hh:mm === */
+function formatTime(mins) {
+  const h=Math.floor(mins/60), m=mins%60;
+  return h>0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 /* === Render sections === */
 function renderSections(zones, trackers) {
-  const c=document.getElementById("sections"); 
-  c.innerHTML="";
+  const c=document.getElementById("sections"); c.innerHTML="";
   for (const zone in zones) {
-    if (EXCLUDED_ZONES.includes(zone)) continue; // skip unwanted zones
-
-    const div=document.createElement("div"); 
-    div.className="card";
+    const div=document.createElement("div"); div.className="card";
     div.innerHTML=`<h3>${zone}</h3>`;
-
     zones[zone].forEach(t=>{
       const label=trackers.find(x=>x.id==t.tid)?.label||"#"+t.tid;
       const cls=t.mins>DWELL_THRESHOLD?"warn":"ok";
-      const timeStr=formatTime(t.mins);
-      div.innerHTML+=`<div class="${cls}">${label}: ${timeStr}</div>`;
+      div.innerHTML+=`<div class="${cls}">${label}: ${formatTime(t.mins)}</div>`;
     });
     c.appendChild(div);
   }
 }
 
-/* === Render map === */
+/* === Render map (only inside zones) === */
 let map, markers=[];
 function renderMap(states, trackers, zones) {
   if (!map) {
@@ -141,31 +141,31 @@ function renderMap(states, trackers, zones) {
   }
   markers.forEach(m=>map.removeLayer(m)); markers=[];
   const bounds=[];
-  for (const tid in states) {
-    // only plot trucks currently in included zones
-    const inAnyZone = Object.values(zones).some(list => list.some(t => t.tid == tid));
-    if (!inAnyZone) continue;
-
-    const loc=states[tid]?.gps?.location; 
-    if (!loc) continue;
-    const label=trackers.find(x=>x.id==tid)?.label||"#"+tid;
-    const m=L.marker([loc.lat,loc.lng]).addTo(map).bindPopup(label);
-    markers.push(m); bounds.push([loc.lat,loc.lng]);
+  for (const zone in zones) {
+    zones[zone].forEach(t=>{
+      const loc=states[t.tid]?.gps?.location;
+      if (!loc) return;
+      const label=trackers.find(x=>x.id==t.tid)?.label||"#"+t.tid;
+      const color=t.mins>DWELL_THRESHOLD?"red":"green";
+      const icon=L.divIcon({className:"", html:`<div style="background:${color};width:12px;height:12px;border-radius:50%"></div>`});
+      const m=L.marker([loc.lat,loc.lng],{icon}).addTo(map).bindPopup(`${label}<br>${formatTime(t.mins)}`);
+      markers.push(m); bounds.push([loc.lat,loc.lng]);
+    });
   }
   if (bounds.length) map.fitBounds(bounds,{padding:[30,30]});
 }
 
-/* === Update loop === */
+/* === Update === */
 async function update() {
   const s=document.getElementById("status");
   try {
     s.textContent="Updating…";
     const trackers=await getTrackers();
-    const events=await getEvents();
-    const zones=computeDwell(events);
-    renderSections(zones,trackers);
     const states=await getStates(trackers.map(t=>t.id));
-    renderMap(states,trackers,zones);
+    const events=await getEvents();
+    const zones=computeCurrent(events, states);
+    renderSections(zones, trackers);
+    renderMap(states, trackers, zones);
     s.textContent=`Updated at ${new Date().toLocaleTimeString()}`;
   } catch(err) {
     console.error(err); s.textContent="Error: "+err;
@@ -175,6 +175,3 @@ update(); setInterval(update,REFRESH_MS);
 </script>
 </body>
 </html>
-
-
-

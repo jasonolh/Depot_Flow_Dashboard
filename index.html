@@ -25,7 +25,7 @@
 /* === CONFIG === */
 const API_BASE = "https://api.eu.navixy.com/v2"; // or us.navixy.com if your account is US
 const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // <-- your real key
-const REFRESH_MS = 30000;
+const REFRESH_MS = 1000;
 const DWELL_THRESHOLD = 30;   // minutes before warning
 const LOOKBACK_HOURS = 24;
 
@@ -175,4 +175,5 @@ update(); setInterval(update,REFRESH_MS);
 </script>
 </body>
 </html>
+
 

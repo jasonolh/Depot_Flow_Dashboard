@@ -1,169 +1,438 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Depot Dashboard Live</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<meta charset="UTF-8" />
+<title>Depot Dashboard – Live Zones</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
-  body { font-family: Arial, sans-serif; margin:0; padding:20px; background:#f4f6f8; }
-  h1 { font-size: 22px; margin-bottom: 10px; }
-  #status { font-size: 14px; color:#444; margin-bottom:10px; }
-  #sections { display:flex; gap:20px; flex-wrap:wrap; margin-top:10px; }
-  .card { background:white; border:1px solid #ddd; border-radius:10px; padding:14px; min-width:220px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
-  .card h3 { margin:0 0 8px; font-size:16px; color:#333; }
-  .truck { display:flex; justify-content:space-between; padding:6px 0; border-top:1px dashed #eee; font-weight:500; }
-  .truck:first-of-type { border-top:none; }
-  .ok { color:green; }
-  .warn { color:red; }
-  #map { margin-top:20px; height:450px; border-radius:10px; border:1px solid #ccc; }
+  :root { --card:#fff; --ink:#111; --muted:#667; --line:#e6e8eb; --ok:#1a7f37; --warn:#d92d20; --bg:#f5f7fb; --brand:#1f6feb; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,Arial}
+  header{padding:14px 18px;border-bottom:1px solid var(--line);background:#fff}
+  h1{margin:0;font-size:20px}
+  main{max-width:1280px;margin:0 auto;padding:16px}
+  .statusbar{display:flex;gap:10px;align-items:center;margin:8px 0 12px;flex-wrap:wrap}
+  .badge{border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:#fff;color:var(--muted)}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .tog{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff}
+  select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+  #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card h3{margin:0 0 8px 0;font-size:16px}
+  .truck{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed var(--line);font-weight:600;cursor:pointer}
+  .truck:first-of-type{border-top:none}
+  .ok{color:var(--ok)} .warn{color:var(--warn)}
+  #map{height:520px;border:1px solid var(--line);border-radius:12px;margin-top:16px}
+  details.debug{margin-top:14px}
+  details.debug summary{cursor:pointer;font-weight:600}
+  pre{white-space:pre-wrap;background:#0b1221;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto}
+  .labelchip{position:absolute;transform:translate(-50%, -50%);background:#fff;padding:2px 6px;border:1px solid #ccd;border-radius:6px;font-size:12px;color:#333}
+  table{border-collapse:collapse;width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
+  th{background:#f7f9ff;color:#334}
+  .small{font-size:12px;color:#555}
+  .pill{display:inline-block;padding:2px 6px;border:1px solid #ccd;border-radius:999px;background:#fff}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
+  .modal.open{display:flex}
+  .panel{width:min(960px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:12px;border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.2)}
+  .panel header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .panel .body{padding:12px 16px}
+  .panel .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px}
+  .zoneRow{border:1px solid var(--line);border-radius:10px;padding:8px}
+  .panel .foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:#fafbff}
 </style>
 </head>
 <body>
-<h1>Depot Dashboard – Live Zones</h1>
-<div id="status">Loading…</div>
-<div id="sections"></div>
-<div id="map"></div>
+<header><h1>Depot Dashboard – Live Zones</h1></header>
+<main>
+  <div class="statusbar">
+    <span id="updated" class="badge">Loading…</span>
+
+    <label class="tog">Cluster
+      <select id="cluster">
+        <option value="eu" selected>EU</option>
+        <option value="us">US</option>
+      </select>
+    </label>
+
+    <label class="tog">Refresh
+      <select id="refreshSelect">
+        <option value="30000">30s</option>
+        <option value="60000">1m</option>
+        <option value="120000">2m</option>
+        <option value="180000" selected>3m</option>
+        <option value="300000">5m</option>
+      </select>
+    </label>
+
+    <label class="tog"><input type="checkbox" id="toggleAllZones" /> Use ALL zones (debug)</label>
+    <label class="tog"><input type="checkbox" id="toggleShowAll" /> Show ALL trackers (debug)</label>
+    <label class="tog"><input type="checkbox" id="toggleSwapMap" /> Map Lat/Lon swap</label>
+
+    <button class="btn primary" id="pickZones">Choose zones</button>
+    <button class="btn" id="testBtn">Run once</button>
+
+    <span id="counts" class="badge">–</span>
+    <span id="groupb" class="badge">Group: –</span>
+    <span id="authb" class="badge">Auth: –</span>
+  </div>
+
+  <div id="grid"></div>
+  <div id="map"></div>
+
+  <details class="debug" open>
+    <summary>Diagnostics</summary>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0">
+      <span id="dbg-zones" class="badge">Zones usable: –</span>
+      <span id="dbg-labels" class="badge">Labeled (IDs matched): –</span>
+      <span id="dbg-allowed" class="badge">Allowed IDs: –</span>
+      <span id="dbg-ev" class="badge">In events fetched: –</span>
+      <span id="dbg-nowSID" class="badge">Now(State-ID): 0</span>
+      <span id="dbg-nowGeom" class="badge">Now(Geom): 0</span>
+      <span id="dbg-nowSwap" class="badge">Now(Geom-swap): 0</span>
+      <span id="dbg-nowSrv" class="badge">Now(Server): 0</span>
+      <span id="dbg-errors" class="badge">Errors: 0</span>
+    </div>
+    <h3 class="small" style="margin:10px 0 6px">Live state (first 40 trackers)</h3>
+    <table id="stateTable"><thead>
+      <tr><th>ID</th><th>Label</th><th>zone_ids</th><th>zone_labels</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Updated</th></tr>
+    </thead><tbody></tbody></table>
+    <h3 class="small" style="margin:14px 0 6px">Log</h3>
+    <pre id="dbg-log">Booting…</pre>
+  </details>
+</main>
+
+<!-- Zone Picker Modal -->
+<div class="modal" id="zoneModal">
+  <div class="panel">
+    <header>
+      <strong>Select the zones to include</strong>
+      <span id="zoneCount" class="pill">–</span>
+    </header>
+    <div class="body">
+      <div style="display:flex;gap:8px;margin:8px 0">
+        <input type="text" id="zoneSearch" placeholder="Filter by name…" />
+        <button class="btn" id="btnSelAll">Select all</button>
+        <button class="btn" id="btnClear">Clear</button>
+      </div>
+      <div class="grid" id="zoneGrid"></div>
+    </div>
+    <div class="foot">
+      <span style="margin-right:auto;color:var(--muted)">Selection is saved locally and used as the allow-list.</span>
+      <button class="btn" id="btnCancel">Cancel</button>
+      <button class="btn primary" id="btnSave">Save & refresh</button>
+    </div>
+  </div>
+</div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-/* === CONFIG === */
-const API_BASE = "https://api.eu.navixy.com/v2"; // change if US server
-const API_KEY  = "39736582e2058803e90919b91fd5e5f9"; // your API key
-const REFRESH_MS = 30000;
-const DWELL_THRESHOLD = 30; // minutes
-const LOOKBACK_HOURS = 24;
-const EXCLUDED_ZONES = [
-  "Fuel Stop - Denne Road",
-  "Fuel Station - Umlaas 3 Pumps",
-  "Route Notify - Durban South"
-];
+/* ---------------- CONFIG ---------------- */
+const API = { eu: "https://api.eu.navixy.com/v2", us: "https://api.us.navixy.com/v2" };
+const API_KEY_FALLBACK = "39736582e2058803e90919b91fd5e5f9"; // test-only fallback
+const TRACKER_GROUP_NAME = "Onelogix Linehaul Trucks";
+const LOOKBACK_HOURS = 240;
+const HISTORY_PAGE_SIZE = 400, HISTORY_MAX_PAGES = 20;
+const SERVER_ZONE_CHECK_MAX = 250;
+const DWELL_THRESHOLD_MIN = 30;
+const PINNED_ZONE_IDS = new Set(["3068175","860454","3068293","3034656","3068295","3068294","3034655","860452","860451","860453","832433","860381"]);
 
-/* === API helper === */
-function apiPost(path, body) {
-  return fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `NVX ${API_KEY}` },
-    body: JSON.stringify(body || {})
-  }).then(r => r.json());
+/* ---------------- GLOBALS ---------------- */
+const qs = new URLSearchParams(location.search);
+const SESSION_KEY = qs.get("session_key") || qs.get("sid") || null;
+const HASH_KEY    = qs.get("hash") || null;
+const AUTH_MODE = SESSION_KEY ? "session_key" : (HASH_KEY ? "hash" : "api_key_fallback");
+const LS_KEY="navixyAllowedZoneIds", LS_CLUSTER="navixyCluster", LS_SWAPMAP="navixySwapMap", LS_REFRESH="navixyRefreshMs";
+const dbg = (m)=>{const el=document.getElementById("dbg-log"); el.textContent=(el.textContent?el.textContent+"\n":"")+m; console.log(m);};
+
+document.getElementById("authb").textContent = `Auth: ${AUTH_MODE}`;
+document.getElementById("cluster").value = localStorage.getItem(LS_CLUSTER) || "eu";
+document.getElementById("toggleSwapMap").checked = localStorage.getItem(LS_SWAPMAP)==="1";
+document.getElementById("refreshSelect").value = localStorage.getItem(LS_REFRESH) || "180000";
+let REFRESH_MS = Number(document.getElementById("refreshSelect").value);
+
+const apiBase = () => API[document.getElementById("cluster").value || "eu"];
+function setBadge(id,txt){ document.getElementById(id).textContent=txt; }
+function authParams(){ return SESSION_KEY ? {session_key: SESSION_KEY} : (HASH_KEY ? {hash: HASH_KEY} : {hash: API_KEY_FALLBACK}); }
+function hhmm(mins){ const h=Math.floor(mins/60), m=mins%60; return h?`${h}h ${m}m`:`${m}m`; }
+function normLatLng(v){ if(!v)return null; const lat=v.lat??v.latitude??v.y??(Array.isArray(v)?v[1]:undefined); const lng=v.lng??v.lon??v.longitude??v.x??(Array.isArray(v)?v[0]:undefined); if(!Number.isFinite(lat)||!Number.isFinite(lng))return null; return {lat,lng}; }
+function getStateLocation(st){ const loc=st?.gps?.location||{}; const c=normLatLng(loc); if(c) return c; const alt={lat:loc.lat??loc.latitude, lng:loc.lng??loc.lon??loc.longitude}; if(Number.isFinite(alt.lat)&&Number.isFinite(alt.lng)) return alt; return null; }
+function toRad(d){return d*Math.PI/180}
+function haversineMeters(a,b){ const R=6371000, dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng); const s=Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
+function distPointToSegmentMeters(pt,a,b){ const R=6371000; const lat0=(a.lat+b.lat)*.5*Math.PI/180; const kx=Math.cos(lat0)*Math.PI/180*R, ky=Math.PI/180*R; const ax=(a.lng-pt.lng)*kx, ay=(a.lat-pt.lat)*ky; const bx=(b.lng-pt.lng)*kx, by=(b.lat-pt.lat)*ky; const vx=bx-ax, vy=by-ay; const wx=-ax, wy=-ay; const c1=vx*wx+vy*wy, c2=vx*vx+vy*vy; let t=c2?(c1/c2):0; if(t<0)t=0; else if(t>1)t=1; const px=ax+t*vx, py=ay+t*vy; return Math.hypot(px,py); }
+function pointInPolygon(pt,verts){ let inside=false; for(let i=0,j=verts.length-1;i<verts.length;j=i++){ const xi=verts[i].lng, yi=verts[i].lat, xj=verts[j].lng, yj=verts[j].lat; const intersect=((yi>pt.lat)!==(yj>pt.lat)) && (pt.lng<(xj-xi)*(pt.lat-yi)/(yj-yi+1e-12)+xi); if(intersect) inside=!inside; } return inside; }
+function contains(z,pt){ if(z.type==="polygon") return pointInPolygon(pt,z.vertices); if(z.type==="circle") return haversineMeters(z.center,pt)<=z.radius_m; if(z.type==="sausage"){ for(let i=1;i<z.poly.length;i++){ if(distPointToSegmentMeters(pt,z.poly[i-1],z.poly[i])<=z.radius_m) return true; } return false; } return false; }
+function containsWithFallback(z,pt){ if(contains(z,pt)) return "primary"; const ps={lat:pt.lng,lng:pt.lat}; if(Number.isFinite(ps.lat)&&Number.isFinite(ps.lng)&&contains(z,ps)) return "pt-swap"; if(z.type==="polygon"){ const vs=z.vertices.map(v=>({lat:v.lng,lng:v.lat})); if(contains({type:"polygon",vertices:vs},pt)) return "verts-swap"; } else if(z.type==="circle"&&z.center){ const cs={lat:z.center.lng,lng:z.center.lat}; if(contains({type:"circle",center:cs,radius_m:z.radius_m},pt)) return "center-swap"; } else if(z.type==="sausage"){ const ps2=z.poly.map(v=>({lat:v.lng,lng:v.lat})); if(contains({type:"sausage",poly:ps2,radius_m:z.radius_m},pt)) return "poly-swap"; } return ""; }
+
+/* ---------------- STORAGE ---------------- */
+function loadAllowedIds(){ try{ const s=localStorage.getItem(LS_KEY); if(!s){ localStorage.setItem(LS_KEY, JSON.stringify([...PINNED_ZONE_IDS])); return new Set(PINNED_ZONE_IDS); } return new Set(JSON.parse(s)); }catch{ return new Set(PINNED_ZONE_IDS); } }
+function saveAllowedIds(set){ try{ localStorage.setItem(LS_KEY, JSON.stringify([...set])); }catch{} }
+
+/* ---------------- HTTP with auto-fallback ---------------- */
+async function postWithParams(path, body, signal){
+  return fetch(`${apiBase()}${path}`,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(Object.assign({}, authParams(), body||{})),
+    signal
+  }).then(r=>r.json());
+}
+async function getWithParams(path, query, signal){
+  const url=new URL(`${apiBase()}${path}`);
+  Object.entries(Object.assign({}, authParams(), query||{})).forEach(([k,v])=>url.searchParams.set(k,String(v)));
+  return fetch(url.toString(),{method:"GET", signal}).then(r=>r.json());
+}
+async function postWithHeader(path, body, signal){
+  return fetch(`${apiBase()}${path}`,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization": `NVX ${API_KEY_FALLBACK}` },
+    body: JSON.stringify(body||{}),
+    signal
+  }).then(r=>r.json());
+}
+async function getWithHeader(path, query, signal){
+  const url=new URL(`${apiBase()}${path}`);
+  Object.entries(query||{}).forEach(([k,v])=>url.searchParams.set(k,String(v)));
+  return fetch(url.toString(),{method:"GET", headers:{ "Authorization": `NVX ${API_KEY_FALLBACK}` }, signal}).then(r=>r.json());
+}
+async function apiPOST(path, body){
+  const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), 15000);
+  try{
+    let json = await postWithParams(path, body, ctrl.signal);
+    if(json && json.success!==false){ dbg(`✅ ${path} ok`); return json; }
+    dbg(`↻ ${path} retry with header auth`);
+    json = await postWithHeader(path, body, ctrl.signal);
+    if(json && json.success!==false){ dbg(`✅ ${path} ok (header)`); return json; }
+    throw new Error(JSON.stringify(json));
+  }catch(e){ throw new Error(`${path} failed: ${e.message||e}`); }
+  finally{ clearTimeout(t); }
+}
+async function apiGET(path, query){
+  const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), 15000);
+  try{
+    let json = await getWithParams(path, query, ctrl.signal);
+    if(json && json.success!==false){ dbg(`✅ GET ${path} ok`); return json; }
+    dbg(`↻ GET ${path} retry with header auth`);
+    json = await getWithHeader(path, query, ctrl.signal);
+    if(json && json.success!==false){ dbg(`✅ GET ${path} ok (header)`); return json; }
+    throw new Error(JSON.stringify(json));
+  }catch(e){ throw new Error(`GET ${path} failed: ${e.message||e}`); }
+  finally{ clearTimeout(t); }
 }
 
-/* === Data fetchers === */
-async function getTrackers() {
-  const res = await apiPost("/tracker/list", {});
-  return res.success ? res.list : [];
+/* -------- TRACKERS (group→fallback) -------- */
+async function fetchTrackerGroupIdByName(name){
+  try{
+    const {list=[]}=await apiPOST("/tracker/group/list",{});
+    const g=list.find(x=>((x.name||x.label||"")+"").trim().toLowerCase()===name.trim().toLowerCase());
+    return g?.id ?? null;
+  }catch(_){ return null; }
 }
-async function getStates(ids) {
-  const res = await apiPost("/tracker/get_states", { trackers: ids });
-  return res.success ? res.states : {};
-}
-async function getZones() {
-  const res = await apiPost("/zone/list", {});
-  return res.success ? res.list : [];
-}
-async function getEvents() {
-  const to = new Date();
-  const from = new Date(to.getTime() - LOOKBACK_HOURS*3600*1000);
-  const fmt = d => d.toISOString().slice(0,19).replace('T',' ');
-  const res = await apiPost("/history/user/list", {
-    from: fmt(from), to: fmt(to),
-    events: ["inzone"],
-    limit: 2000, ascending: true
-  });
-  return res.success ? res.list : [];
-}
-async function checkPoint(lat,lng) {
-  const res = await apiPost("/zone/check_point", { lat, lng });
-  return res.success ? res.list : [];
-}
-
-/* === Build live zones map === */
-async function computeCurrent(states, events, zones) {
-  const now=new Date();
-  const latestEnter={};
-  events.forEach(e=>{
-    const tid=e.tracker_id;
-    const zid=e.extra?.zone_ids?.[0];
-    if (!zid) return;
-    latestEnter[`${tid}_${zid}`]=new Date(e.time);
-  });
-
-  const zonesMap={};
-  for (const tid in states) {
-    const loc=states[tid]?.gps?.location;
-    if (!loc) continue;
-    const inZones=await checkPoint(loc.lat,loc.lng); // real-time zone check
-    inZones.forEach(z=>{
-      if (EXCLUDED_ZONES.includes(z.label)) return;
-      const key=`${tid}_${z.id}`;
-      const since=latestEnter[key]||now;
-      const mins=Math.round((now-since)/60000);
-      zonesMap[z.label]=zonesMap[z.label]||[];
-      zonesMap[z.label].push({tid,mins});
-    });
+async function fetchTrackersInGroup(name){
+  const {list:all=[]}=await apiPOST("/tracker/list",{});
+  const gid=await fetchTrackerGroupIdByName(name);
+  if(gid!=null){
+    const filtered=all.filter(t=>String(t.group_id||t.groupId||"")===String(gid));
+    setBadge("groupb", `Group: ${filtered.length?name:"ALL trackers"} (${filtered.length||all.length})`);
+    return filtered.length?filtered:all;
   }
-  return zonesMap;
+  setBadge("groupb", `Group: ALL trackers (${all.length})`);
+  return all;
 }
+async function fetchStates(ids){ if(!ids.length) return {}; const {states}=await apiPOST("/tracker/get_states",{trackers:ids}); return states||{}; }
 
-/* === Formatting === */
-function formatTime(mins) {
-  const h=Math.floor(mins/60), m=mins%60;
-  return h>0?`${h}h ${m}m`:`${m}m`;
+/* -------- ZONES -------- */
+async function fetchZonesRaw(){ const {list}=await apiGET("/zone/list",{with_points:true,limit:16000}); return list||[]; }
+async function fetchZoneShapeById(id){
+  for(const body of [{zone_id:Number(id),with_points:true},{id:Number(id),with_points:true}]){
+    try{ const r=await apiPOST("/zone/read", body); const zone=r?.value||r?.zone||r?.result||null; if(zone) return zone; }catch(_){}
+  }
+  try{ const {list:pts=[]}=await apiGET("/zone/point/list",{ zone_id:Number(id), count:500 }); if(Array.isArray(pts)&&pts.length>=2){ return { id:Number(id), type:"polygon", points:pts }; } }catch(_){}
+  return null;
 }
+async function zonesAtPoint(lat,lng){
+  try{ const r=await apiPOST("/zone/search_location",{ location:{lat,lng} }); if(Array.isArray(r?.list)&&r.list.length) return r.list; }catch(_){}
+  return [];
+}
+function normalizeZones(zonesRaw, allowedIds){
+  const out=[];
+  for(const z of zonesRaw){
+    const zid=String(z.id ?? z.zone_id); if(!zid) continue;
+    if(allowedIds.size && !allowedIds.has(zid)) continue;
+    const label=(z.label||z.name||"").trim(), type=(z.type||"").toLowerCase();
+    if(type==="circle" && z.center && Number.isFinite(z.radius)){ const center=normLatLng(z.center); if(center) out.push({id:zid,label,type:"circle",center,radius_m:Number(z.radius)}); continue; }
+    const pts=Array.isArray(z.points)?z.points.map(normLatLng).filter(Boolean):[];
+    if(type==="polygon" && pts.length>=3){ out.push({id:zid,label,type:"polygon",vertices:pts}); continue; }
+    if(type==="sausage" && pts.length>=2 && Number.isFinite(z.radius)){ out.push({id:zid,label,type:"sausage",poly:pts,radius_m:Number(z.radius)}); continue; }
+    const s=z.shape||z.geometry||z;
+    if(s?.center && s?.radius){ const c=normLatLng(s.center); if(c) out.push({id:zid,label,type:"circle",center:c,radius_m:Number(s.radius)}); }
+    else if(Array.isArray(s?.vertices||s?.points)){ const vs=(s.vertices||s.points).map(normLatLng).filter(Boolean); if(vs.length>=3) out.push({id:zid,label,type:"polygon",vertices:vs}); }
+  }
+  return out;
+}
+function buildIdToLabel(zonesRaw, allowedIds){ const m=new Map(); for(const z of zonesRaw){ const zid=String(z.id ?? z.zone_id); if(!zid) continue; if(allowedIds.size && !allowedIds.has(zid)) continue; const label=(z.label||z.name||"").trim(); if(label) m.set(zid,label);} return m; }
 
-/* === Rendering === */
-function renderSections(zones, trackers) {
-  const c=document.getElementById("sections"); c.innerHTML="";
-  for (const zone in zones) {
-    const div=document.createElement("div"); div.className="card";
-    div.innerHTML=`<h3>${zone}</h3>`;
-    zones[zone].forEach(t=>{
-      const label=trackers.find(x=>x.id==t.tid)?.label||"#"+t.tid;
-      const cls=t.mins>DWELL_THRESHOLD?"warn":"ok";
-      div.innerHTML+=`<div class="truck ${cls}"><span>${label}</span><span>${formatTime(t.mins)}</span></div>`;
-    });
-    c.appendChild(div);
+/* -------- HISTORY (dwell start only) -------- */
+async function fetchHistory(events){
+  const to=new Date(); const from=new Date(to.getTime()-LOOKBACK_HOURS*3600*1000);
+  const fmt=d=>d.toISOString().slice(0,19).replace("T"," ");
+  let offset=0, page=0, all=[];
+  while(page<HISTORY_MAX_PAGES){
+    try{
+      const {list}=await apiPOST("/history/user/list",{from:fmt(from),to:fmt(to),events,limit:HISTORY_PAGE_SIZE,offset,ascending:true});
+      const batch=list||[]; all=all.concat(batch);
+      if(batch.length<HISTORY_PAGE_SIZE) break; offset+=HISTORY_PAGE_SIZE; page++;
+    }catch(e){ dbg(`history paging stopped early: ${e.message||e}`); break; }
   }
+  return all;
 }
-let map, markers=[];
-function renderMap(states, trackers, zones) {
-  if (!map) {
-    map=L.map("map").setView([0,0],2);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+function buildLastEnterMap(events){ const m=new Map(); for(const e of events){ const tid=String(e.tracker_id); const zids=(e.extra?.zone_ids||[]).map(String); const when=new Date(e.time); for(const zid of zids) m.set(`${tid}_${zid}`, when);} return m; }
+
+/* -------- MEMBERSHIP (NOW only) -------- */
+function membershipNow(states, zonesNorm, allowedIds){
+  const byId=new Map(zonesNorm.map(z=>[String(z.id),z])); const mem=new Map(); let cId=0,cGeom=0,cSwap=0;
+  for(const [tid,st] of Object.entries(states)){ const ids=Array.isArray(st?.gps?.zone_ids)?st.gps.zone_ids.map(String):[]; for(const zid of ids){ if(allowedIds.size&&!allowedIds.has(zid)) continue; const z=byId.get(zid); if(!z) continue; const key=`${tid}_${zid}`; if(!mem.has(key)){ mem.set(key,{tid,zid,label:z.label}); cId++; } } }
+  for(const [tid,st] of Object.entries(states)){ const has=[...mem.keys()].some(k=>k.startsWith(`${tid}_`)); if(has) continue; const loc=getStateLocation(st); if(!loc) continue; const pt={lat:loc.lat,lng:loc.lng}; for(const z of zonesNorm){ const zid=String(z.id); if(allowedIds.size&&!allowedIds.has(zid)) continue; const mode=containsWithFallback(z,pt); if(mode){ const key=`${tid}_${zid}`; if(!mem.has(key)){ mem.set(key,{tid,zid,label:z.label}); if(mode==="primary") cGeom++; else cSwap++; } break; } }
+  setBadge("dbg-nowSID",`Now(State-ID): ${cId}`); setBadge("dbg-nowGeom",`Now(Geom): ${cGeom}`); setBadge("dbg-nowSwap",`Now(Geom-swap): ${cSwap}`); return mem;
+}
+async function membershipFromServer(states, allowedIds){
+  const mem=new Map(); let added=0; const entries=Object.entries(states).slice(0,SERVER_ZONE_CHECK_MAX);
+  for(const [tid,st] of entries){ const loc=getStateLocation(st); if(!loc) continue; try{ const list=await zonesAtPoint(loc.lat,loc.lng); const ids=list.map(z=>String(z.id??z.zone_id??z)).filter(Boolean); for(const zid of ids){ if(allowedIds.size&&!allowedIds.has(zid)) continue; const key=`${tid}_${zid}`; if(!mem.has(key)){ mem.set(key,{tid,zid}); added++; } } }catch(e){} }
+  setBadge("dbg-nowSrv",`Now(Server): ${added}`); return mem;
+}
+function buildZonesMapFromNow(memNow,lastEnter,now,idToLabel){ const zones={}; for(const [key,rec] of memNow.entries()){ const since=lastEnter.get(key)||now; const mins=Math.max(0,Math.round((now-new Date(since))/60000)); const name=idToLabel.get(String(rec.zid))||rec.label||"Unknown"; zones[name]=zones[name]||[]; zones[name].push({tid:rec.tid,mins}); } return zones; }
+
+/* -------- RENDER -------- */
+function renderCards(zonesMap, trackers){
+  const grid=document.getElementById("grid"); grid.innerHTML="";
+  const names=Object.keys(zonesMap).sort();
+  if(!names.length){ grid.innerHTML=`<div class="card"><h3>No trucks in zones</h3><div class="truck" style="color:var(--muted)">Pick zones (top bar) or enable ALL zones (debug).</div></div>`; return; }
+  for(const name of names){ const list=zonesMap[name].sort((a,b)=>b.mins-a.mins); const div=document.createElement("div"); div.className="card"; div.innerHTML=`<h3>${name} (${list.length})</h3>`; for(const t of list){ const meta=trackers.find(x=>String(x.id)===String(t.tid)); const label=meta?.label||meta?.name||`#${t.tid}`; const cls=t.mins>DWELL_THRESHOLD_MIN?"warn":"ok"; const row=document.createElement("div"); row.className=`truck ${cls}`; row.innerHTML=`<span>${label}</span><span>${hhmm(t.mins)}</span>`; row.onclick=()=>centerOnTracker(t.tid); div.appendChild(row);} grid.appendChild(div); }
+}
+let map, markers=[], zoneLayer, allLayer, statesCache={}, trackersCache=[];
+function maybeSwap(ll){ return document.getElementById("toggleSwapMap").checked ? [ll.lng, ll.lat] : [ll.lat, ll.lng]; }
+function renderMap(zonesMap, states, trackers, zonesNorm, showAll=false){
+  if(!map){ map=L.map("map").setView([-29.95, 30.95], 10); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map); }
+  [markers,zoneLayer,allLayer].forEach(layer=>{ if(Array.isArray(layer)) layer.forEach(m=>map&&m&&m.remove()); else if(layer&&map) layer.remove(); }); markers=[]; zoneLayer=null; allLayer=null;
+  zoneLayer=L.layerGroup().addTo(map);
+  for(const z of zonesNorm){
+    if(z.type==="polygon"){ L.polygon(z.vertices.map(v=>maybeSwap(v)),{weight:1,color:"#4a6cf7",fillOpacity:0.05}).addTo(zoneLayer);
+      const c=z.vertices.reduce((a,p)=>({lat:a.lat+p.lat,lng:a.lng+p.lng}),{lat:0,lng:0}); c.lat/=z.vertices.length; c.lng/=z.vertices.length;
+      L.marker(maybeSwap(c),{icon:L.divIcon({className:"",html:`<div class="labelchip">${z.label}</div>`})}).addTo(zoneLayer);
+    }else if(z.type==="circle"){ L.circle(maybeSwap(z.center),{radius:z.radius_m,weight:1,color:"#4a6cf7",fillOpacity:0.05}).addTo(zoneLayer);
+      L.marker(maybeSwap(z.center),{icon:L.divIcon({className:"",html:`<div class="labelchip">${z.label}</div>`})}).addTo(zoneLayer);
+    }else if(z.type==="sausage"){ L.polyline(z.poly.map(v=>maybeSwap(v)),{color:"#4a6cf7",weight:2,opacity:.8}).addTo(zoneLayer); }
   }
-  markers.forEach(m=>map.removeLayer(m)); markers=[];
   const bounds=[];
-  for (const zone in zones) {
-    zones[zone].forEach(t=>{
-      const loc=states[t.tid]?.gps?.location;
-      if (!loc) return;
-      const label=trackers.find(x=>x.id==t.tid)?.label||"#"+t.tid;
-      const color=t.mins>DWELL_THRESHOLD?"red":"green";
-      const icon=L.divIcon({className:"", html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,.3)"></div>`});
-      const m=L.marker([loc.lat,loc.lng],{icon}).addTo(map).bindPopup(`${label}<br>${formatTime(t.mins)}`);
-      markers.push(m); bounds.push([loc.lat,loc.lng]);
-    });
-  }
-  if (bounds.length) map.fitBounds(bounds,{padding:[30,30]});
+  for(const zone in zonesMap){ for(const t of zonesMap[zone]){ const st=states[t.tid]; const loc=getStateLocation(st); if(!loc) continue; const meta=trackers.find(x=>String(x.id)===String(t.tid)); const label=meta?.label||meta?.name||`#${t.tid}`; const color=t.mins>DWELL_THRESHOLD_MIN?"#d92d20":"#1a7f37"; const icon=L.divIcon({className:"",html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.3)"></div>`}); const marker=L.marker(maybeSwap(loc),{icon}).addTo(map).bindPopup(`<b>${label}</b><br>${zone}<br>${hhmm(t.mins)}`); marker._tid=String(t.tid); markers.push(marker); bounds.push(maybeSwap(loc)); } }
+  window.markers=markers;
+  if(showAll){ allLayer=L.layerGroup().addTo(map); for(const [tid,st] of Object.entries(states)){ const loc=getStateLocation(st); if(!loc) continue; const meta=trackers.find(x=>String(x.id)===String(tid)); const label=meta?.label||meta?.name||`#${tid}`; const icon=L.divIcon({className:"",html:`<div style="background:#666;width:10px;height:10px;border-radius:50%;border:2px solid #fff;opacity:.7"></div>`}); L.marker(maybeSwap(loc),{icon}).addTo(allLayer).bindPopup(`<b>${label}</b><br>(${loc.lat?.toFixed?.(5)}, ${loc.lng?.toFixed?.(5)})`); bounds.push(maybeSwap(loc)); } }
+  if(bounds.length) map.fitBounds(bounds,{padding:[30,30]});
+  statesCache=states; trackersCache=trackers;
+}
+function centerOnTracker(tid){ const st=statesCache[tid]; if(!st) return; const loc=getStateLocation(st); if(!loc) return; map.setView(maybeSwap(loc),16); const m=(window.markers||[]).find(x=>x._tid===String(tid)); if(m) m.openPopup(); }
+function renderStateTable(states, trackers){
+  const tb=document.querySelector("#stateTable tbody"); tb.innerHTML="";
+  const rows=Object.entries(states).slice(0,40).map(([tid,st])=>{ const meta=trackers.find(t=>String(t.id)===String(tid)); const loc=getStateLocation(st)||{}; const labels=Array.isArray(st?.gps?.zone_labels)?st.gps.zone_labels.join(", "):""; const ids=Array.isArray(st?.gps?.zone_ids)?st.gps.zone_ids.join(", "):""; const sp=st?.gps?.speed??""; const upd=st?.gps?.updated??st?.updated??""; return `<tr><td>${tid}</td><td>${meta?.label||meta?.name||""}</td><td class="small">${ids}</td><td class="small">${labels}</td><td>${Number.isFinite(loc.lat)?loc.lat.toFixed(5):""}</td><td>${Number.isFinite(loc.lng)?loc.lng.toFixed(5):""}</td><td>${sp}</td><td class="small">${upd}</td></tr>`; });
+  tb.innerHTML = rows.join("") || `<tr><td colspan="8" class="small">No tracker state</td></tr>`;
 }
 
-/* === Update loop === */
-async function update() {
-  const s=document.getElementById("status");
-  try {
-    s.textContent="Updating…";
-    const trackers=await getTrackers();
-    const states=await getStates(trackers.map(t=>t.id));
-    const zonesList=await getZones();
-    const events=await getEvents();
-    const zones=await computeCurrent(states, events, zonesList);
-    renderSections(zones,trackers);
-    renderMap(states,trackers,zones);
-    s.textContent=`Updated at ${new Date().toLocaleTimeString()}`;
-  } catch(err) {
-    console.error(err); s.textContent="Error: "+err;
+/* -------- ZONE PICKER -------- */
+let ZONES_CACHE=[];
+function openZonePicker(){
+  const modal=document.getElementById("zoneModal"), grid=document.getElementById("zoneGrid"), search=document.getElementById("zoneSearch"); const selected=loadAllowedIds();
+  function render(list){ grid.innerHTML=""; const term=search.value.trim().toLowerCase(); let shown=0; for(const z of list){ const name=(z.label||z.name||"").trim(); if(term && !name.toLowerCase().includes(term)) continue; const id=String(z.id); const row=document.createElement("label"); row.className="zoneRow"; const checked=selected.has(id)?"checked":""; row.innerHTML=`<input type="checkbox" data-id="${id}" ${checked}/> <strong>${name}</strong><br><span class="small">ID ${id}</span>`; grid.appendChild(row); shown++; } document.getElementById("zoneCount").textContent=`Showing ${shown} of ${list.length}`; grid.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.addEventListener("change",(e)=>{ const id=e.target.getAttribute("data-id"); if(e.target.checked) selected.add(id); else selected.delete(id); })); }
+  render(ZONES_CACHE); search.oninput=()=>render(ZONES_CACHE);
+  document.getElementById("btnSelAll").onclick=()=>{ ZONES_CACHE.forEach(z=>selected.add(String(z.id))); render(ZONES_CACHE); };
+  document.getElementById("btnClear").onclick=()=>{ selected.clear(); render(ZONES_CACHE); };
+  document.getElementById("btnCancel").onclick=()=>{ modal.classList.remove("open"); };
+  document.getElementById("btnSave").onclick=()=>{ saveAllowedIds(selected); modal.classList.remove("open"); runOnce(); };
+  modal.classList.add("open");
+}
+
+/* -------- ORCHESTRATION -------- */
+let BUSY=false; let timer=null;
+
+async function connectivityProbe(){
+  try{
+    dbg(`🔑 Auth mode: ${AUTH_MODE}`);
+    dbg(`🌐 Cluster: ${apiBase()}`);
+    dbg(`🚀 PROBE /tracker/list …`);
+    await apiPOST("/tracker/list",{});
+    dbg("✅ PROBE ok");
+    return true;
+  }catch(e){
+    dbg("❌ PROBE failed: "+(e.message||e));
+    setBadge("updated","Connectivity problem – check Session key option or cluster.");
+    return false;
   }
 }
-update(); setInterval(update,REFRESH_MS);
+
+async function runOnce(){
+  if(BUSY) return; BUSY=true;
+  try{
+    if(!(await connectivityProbe())){ BUSY=false; return; }
+    setBadge("dbg-errors","Errors: 0");
+
+    localStorage.setItem(LS_CLUSTER, document.getElementById("cluster").value);
+    localStorage.setItem(LS_SWAPMAP, document.getElementById("toggleSwapMap").checked ? "1" : "0");
+
+    const trackers = await fetchTrackersInGroup(TRACKER_GROUP_NAME);
+    const states   = await fetchStates(trackers.map(t=>t.id));
+    renderStateTable(states, trackers);
+
+    const zonesRawList=await fetchZonesRaw();
+    ZONES_CACHE = zonesRawList.slice().sort((a,b)=>String(a.label||a.name||"").localeCompare(String(b.label||b.name||"")));
+    const useAll=document.getElementById("toggleAllZones").checked;
+    const allowedIds = useAll ? new Set(zonesRawList.map(z=>String(z.id))) : loadAllowedIds();
+    setBadge("dbg-allowed", `Allowed IDs: ${allowedIds.size}${useAll?" (ALL)":" (pinned/picker)"}`);
+    const idToLabel=buildIdToLabel(zonesRawList, allowedIds);
+    setBadge("dbg-labels", `Labeled (IDs matched): ${idToLabel.size}`);
+
+    const missing = zonesRawList.filter(z => !z.points && !z.center).map(z=>String(z.id)).filter(id=>allowedIds.has(id));
+    const enriched = [];
+    for(const id of missing){ const z=await fetchZoneShapeById(id); if(z) enriched.push(z); }
+    const zonesAll = zonesRawList.concat(enriched);
+    const zonesNorm = normalizeZones(zonesAll, allowedIds);
+    setBadge("dbg-zones", `Zones usable: ${zonesNorm.length}`);
+
+    const inEvents  = await fetchHistory(["inzone"]);
+    const lastEnterFromHistory = buildLastEnterMap(inEvents);
+    setBadge("dbg-ev", `In events fetched: ${inEvents.length}`);
+
+    const memFromStateGeom = membershipNow(states, zonesNorm, allowedIds);
+    const memSrv           = await membershipFromServer(states, allowedIds);
+    const memNow = new Map([...memFromStateGeom, ...memSrv]);
+
+    const zonesMap=buildZonesMapFromNow(memNow, lastEnterFromHistory, new Date(), idToLabel);
+    renderCards(zonesMap, trackers);
+    renderMap(zonesMap, states, trackers, zonesNorm, document.getElementById("toggleShowAll").checked);
+
+    const upd=new Date().toLocaleTimeString();
+    const markerCount = (window.markers || []).length;
+    setBadge("updated",`Updated at ${upd} • every ${Math.round(REFRESH_MS/1000)}s`);
+    setBadge("counts",`Cards: ${Object.keys(zonesMap).length} • Markers: ${markerCount}`);
+  }catch(err){
+    dbg(`FATAL: ${err.message||err}`);
+    setBadge("updated","Update failed – see diagnostics");
+  }finally{ BUSY=false; }
+}
+
+/* refresh control */
+function resetTimer(){ if(timer) clearInterval(timer); timer=setInterval(runOnce, REFRESH_MS); }
+document.getElementById("refreshSelect").addEventListener("change", e=>{ REFRESH_MS=Number(e.target.value||"180000"); localStorage.setItem(LS_REFRESH,String(REFRESH_MS)); resetTimer(); });
+
+/* wire UI */
+document.getElementById("testBtn").addEventListener("click", runOnce);
+document.getElementById("toggleAllZones").addEventListener("change", runOnce);
+document.getElementById("toggleShowAll").addEventListener("change", runOnce);
+document.getElementById("toggleSwapMap").addEventListener("change", runOnce);
+document.getElementById("pickZones").addEventListener("click", openZonePicker);
+
+/* boot */
+runOnce(); resetTimer();
 </script>
 </body>
 </html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Depot Dashboard – Live Zones</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body { margin:0; background:#f5f7fb; font:14px/1.45 system-ui,Segoe UI,Roboto,Arial }
+    header{padding:14px 18px;border-bottom:1px solid #e6e8eb;background:#fff}
+    h1{margin:0;font-size:20px}
+    #map{height:520px;margin-top:16px;border:1px solid #e6e8eb;border-radius:12px}
+  </style>
+</head>
+<body>
+  <header><h1>Depot Dashboard – Live Zones</h1></header>
+  <main>
+    <div id="grid"></div>
+    <div id="map"></div>
+    <details class="debug" open>
+      <summary>Diagnostics</summary>
+      <pre id="dbg-log">Booting…</pre>
+    </details>
+  </main>
+
+  <!-- External libraries -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Our app logic -->
+  <script src="/static/assets/app.js"></script>
+</body>
+</html>

@@ -50,6 +50,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // ... all your existing functions, fetch logic, render functions, etc. ...
   
   /* boot */
-  runOnce();
-  resetTimer();
-});
+(async () => {
+  try {
+    dbg("🚀 Boot sequence start");
+    await runOnce();
+    resetTimer();
+    dbg("✅ Boot sequence finished");
+  } catch (err) {
+    dbg("❌ Boot crash: " + (err.message || err));
+    console.error(err);
+  }
+})();

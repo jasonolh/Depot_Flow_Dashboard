@@ -14,7 +14,7 @@ API_KEY = os.getenv("NAVIXY_API_KEY", "YOUR_API_KEY")
 UPDATE_INTERVAL = int(os.getenv("CACHE_INTERVAL", 30))
 
 # Frontend serving
-frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend")
+frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
 
 @app.get("/")

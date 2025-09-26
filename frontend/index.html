@@ -29,11 +29,11 @@
     details.debug{margin-top:14px}
     details.debug summary{cursor:pointer;font-weight:600}
     pre{white-space:pre-wrap;background:#0b1221;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto}
-    .labelchip{position:absolute;transform:translate(-50%, -50%);background:#fff;padding:2px 6px;border:1px solid #ccd;border-radius:6px;font-size:12px;color:#333}
     table{border-collapse:collapse;width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
     th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
     th{background:#f7f9ff;color:#334}
     .small{font-size:12px;color:#555}
+    tr.warn td{color:var(--warn);font-weight:600}
   </style>
 </head>
 <body>
@@ -78,9 +78,9 @@
         <span id="dbg-ev" class="badge">Events: –</span>
         <span id="dbg-errors" class="badge">Errors: 0</span>
       </div>
-      <h3 class="small">Live state (first 40 trackers)</h3>
+      <h3 class="small">Live state (sorted by dwell time)</h3>
       <table id="stateTable"><thead>
-        <tr><th>ID</th><th>Label</th><th>Zone IDs</th><th>Zone Labels</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Updated</th></tr>
+        <tr><th>ID</th><th>Label</th><th>Zone IDs</th><th>Zone Labels</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Updated</th><th>Dwell</th></tr>
       </thead><tbody></tbody></table>
       <h3 class="small">Log</h3>
       <pre id="dbg-log">Booting…</pre>
@@ -91,15 +91,14 @@
 
   <script type="text/babel" data-presets="env">
     const API = { eu: "https://api.eu.navixy.com/v2", us: "https://api.us.navixy.com/v2" };
-    const API_KEY_FALLBACK = "39736582e2058803e90919b91fd5e5f9";
     const TRACKER_GROUP_NAME = "Onelogix Linehaul Trucks";
+    const DWELL_THRESHOLD_MIN = 30;
 
     const dbg = (m)=>{const el=document.getElementById("dbg-log"); el.textContent=(el.textContent?el.textContent+"\n":"")+m; console.log(m);};
-    const apiBase = () => API[document.getElementById("cluster").value || "eu"];
     function setBadge(id,txt){ const el=document.getElementById(id); if(el) el.textContent=txt; }
     function hhmm(mins){ const h=Math.floor(mins/60), m=mins%60; return h?`${h}h ${m}m`:`${m}m`; }
 
-    /* ==== MOCK fetch until API is wired ==== */
+    /* ==== MOCK fetch ==== */
     async function fetchZones(){ return [{id:1,label:"Depot"},{id:2,label:"Highway"}]; }
     async function fetchTrackers(){ return [{id:101,label:"Truck A"},{id:102,label:"Truck B"}]; }
     function buildZonesMap(){ return {"Depot":[{tid:101,mins:80}], "Highway":[]}; }
@@ -121,7 +120,7 @@
           list.forEach(t=>{
             const meta=trackers.find(x=>String(x.id)===String(t.tid));
             const label=(meta&&(meta.label||meta.name))||`#${t.tid}`;
-            const cls=t.mins>=30?"warn":"ok";
+            const cls=t.mins>=DWELL_THRESHOLD_MIN?"warn":"ok";
             const row=document.createElement("div");
             row.className=`truck ${cls}`;
             row.innerHTML=`<span>${label}</span><span>${hhmm(t.mins)}</span>`;
@@ -132,12 +131,42 @@
       });
     }
 
+    function renderStateTable(zonesMap, trackers){
+      const tb=document.querySelector("#stateTable tbody"); tb.innerHTML="";
+      const rows=[];
+      Object.entries(zonesMap).forEach(([zone,list])=>{
+        list.forEach(t=>{
+          const meta=trackers.find(x=>String(x.id)===String(t.tid));
+          rows.push({
+            tid:t.tid,
+            label:(meta&&meta.label)||`#${t.tid}`,
+            zone:zone,
+            mins:t.mins,
+            lat:(Math.random()*2-1).toFixed(5), // mock lat
+            lon:(Math.random()*2+25).toFixed(5), // mock lon
+            speed:Math.floor(Math.random()*80),
+            updated:new Date().toISOString().slice(0,19).replace("T"," ")
+          });
+        });
+      });
+      rows.sort((a,b)=>b.mins-a.mins);
+      rows.forEach(r=>{
+        const tr=document.createElement("tr");
+        if(r.mins>=DWELL_THRESHOLD_MIN) tr.classList.add("warn");
+        tr.innerHTML=`<td>${r.tid}</td><td>${r.label}</td><td>${r.zone}</td><td>${r.zone}</td>
+          <td>${r.lat}</td><td>${r.lon}</td><td>${r.speed}</td><td>${r.updated}</td><td>${hhmm(r.mins)}</td>`;
+        tb.appendChild(tr);
+      });
+      if(!rows.length) tb.innerHTML=`<tr><td colspan="9" class="small">No tracker state</td></tr>`;
+    }
+
     async function runOnce(){
       dbg("🚀 Run sequence");
       const trackers=await fetchTrackers();
       const zones=await fetchZones();
       const zonesMap=buildZonesMap();
       renderCards(zonesMap,trackers,zones);
+      renderStateTable(zonesMap,trackers);
       setBadge("updated","Updated "+new Date().toLocaleTimeString());
     }
 

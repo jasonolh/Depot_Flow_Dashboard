@@ -3,31 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <title>Depot Dashboard – Live Zones</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style>
-    body { margin:0; background:#f5f7fb; font:14px/1.45 system-ui,Segoe UI,Roboto,Arial }
-    header{padding:14px 18px;border-bottom:1px solid #e6e8eb;background:#fff}
-    h1{margin:0;font-size:20px}
-    #map{height:520px;margin-top:16px;border:1px solid #e6e8eb;border-radius:12px}
-  </style>
+  <link rel="stylesheet" href="/static/assets/styles.css" />
 </head>
 <body>
   <header><h1>Depot Dashboard – Live Zones</h1></header>
   <main>
-    <div id="grid"></div>
-    <div id="map"></div>
-    <details class="debug" open>
-      <summary>Diagnostics</summary>
-      <pre id="dbg-log">Booting…</pre>
-    </details>
+    <div class="statusbar">
+      <span id="updated" class="badge">Loading…</span>
+      <label class="tog">Cluster 
+        <select id="cluster">
+          <option value="eu" selected>EU</option>
+          <option value="us">US</option>
+        </select>
+      </label>
+      <label class="tog">Refresh 
+        <select id="refreshSelect">
+          <option value="30000">30s</option>
+          <option value="60000">1m</option>
+          <option value="120000">2m</option>
+          <option value="180000" selected>3m</option>
+          <option value="300000">5m</option>
+        </select>
+      </label>
+      <label class="tog"><input type="checkbox" id="toggleSwapMap" /> Swap Lat/Lon</label>
+      <span id="authb" class="badge">Auth: –</span>
+    </div>
+
+    <h3>Tracker States</h3>
+    <table id="stateTable">
+      <thead>
+        <tr><th>ID</th><th>Label</th><th>zone_ids</th><th>zone_labels</th>
+            <th>Lat</th><th>Lon</th><th>Speed</th><th>Updated</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Diagnostics</h3>
+    <pre id="dbg-log">Booting…</pre>
   </main>
 
-  <!-- External libraries -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-  <!-- Our app logic -->
   <script src="/static/assets/app.js"></script>
 </body>
 </html>

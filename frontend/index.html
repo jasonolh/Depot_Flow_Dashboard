@@ -4,68 +4,54 @@
   <meta charset="UTF-8" />
   <title>Depot Dashboard – Live Zones</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-
-  <!-- Leaflet Core -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-  <!-- Leaflet Plugins -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
-  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-
   <style>
     :root {
-      --card:#fff; --ink:#111; --muted:#667; --line:#e6e8eb; --ok:#1a7f37;
-      --warn:#d92d20; --idle:#f59e0b; --bg:#f5f7fb; --brand:#1f6feb;
-      --dark-bg:#0d1117; --dark-card:#161b22; --dark-ink:#e6edf3; --dark-line:#30363d;
+      --card:#fff;
+      --ink:#111;
+      --muted:#667;
+      --line:#e6e8eb;
+      --ok:#1a7f37;
+      --warn:#d92d20;
+      --bg:#f5f7fb;
+      --brand:#1f6feb;
     }
+    *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,Arial}
-    body.dark{background:var(--dark-bg);color:var(--dark-ink);}
     header{padding:14px 18px;border-bottom:1px solid var(--line);background:#fff}
-    body.dark header{background:var(--dark-card);border-color:var(--dark-line);}
     h1{margin:0;font-size:20px}
     main{max-width:1280px;margin:0 auto;padding:16px}
     .statusbar{display:flex;gap:10px;align-items:center;margin:8px 0 12px;flex-wrap:wrap}
     .badge{border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:#fff;color:var(--muted)}
-    body.dark .badge{background:var(--dark-card);border-color:var(--dark-line);}
     .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer}
     .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
     .tog{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff}
-    body.dark .tog{background:var(--dark-card);border-color:var(--dark-line);}
-    select,input[type=checkbox]{cursor:pointer}
+    select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
     #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-    body.dark .card{background:var(--dark-card);border-color:var(--dark-line);}
+    .card h3{margin:0 0 8px 0;font-size:16px}
     .truck{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed var(--line);font-weight:600;cursor:pointer}
     .truck:first-of-type{border-top:none}
-    .ok{color:var(--ok)} .warn{color:var(--warn)} .idle{color:var(--idle)}
+    .ok{color:var(--ok)}
+    .warn{color:var(--warn)}
     #map{height:520px;border:1px solid var(--line);border-radius:12px;margin-top:16px}
     details.debug{margin-top:14px}
     details.debug summary{cursor:pointer;font-weight:600}
     pre{white-space:pre-wrap;background:#0b1221;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto}
     .labelchip{position:absolute;transform:translate(-50%, -50%);background:#fff;padding:2px 6px;border:1px solid #ccd;border-radius:6px;font-size:12px;color:#333}
     table{border-collapse:collapse;width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-    body.dark table{background:var(--dark-card);border-color:var(--dark-line);}
     th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
     th{background:#f7f9ff;color:#334}
-    body.dark th{background:#161b22;color:#c9d1d9;}
     .small{font-size:12px;color:#555}
-    body.dark .small{color:#aaa}
     .pill{display:inline-block;padding:2px 6px;border:1px solid #ccd;border-radius:999px;background:#fff}
     .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
     .modal.open{display:flex}
     .panel{width:min(960px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:12px;border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.2)}
-    body.dark .panel{background:#161b22;border-color:#30363d;}
     .panel header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
     .panel .body{padding:12px 16px}
     .panel .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px}
     .zoneRow{border:1px solid var(--line);border-radius:10px;padding:8px}
     .panel .foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:#fafbff}
-    /* Alerts panel */
-    #alerts{margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fff;max-height:200px;overflow:auto;font-size:13px}
-    body.dark #alerts{background:#161b22;border-color:#30363d;}
   </style>
 </head>
 <body>
@@ -73,37 +59,34 @@
   <main>
     <div class="statusbar">
       <span id="updated" class="badge">Loading…</span>
-      <label class="tog">Cluster
-        <select id="cluster"><option value="eu" selected>EU</option><option value="us">US</option></select>
+      <label class="tog">Cluster 
+        <select id="cluster">
+          <option value="eu" selected>EU</option>
+          <option value="us">US</option>
+        </select>
       </label>
-      <label class="tog">Refresh
+      <label class="tog">Refresh 
         <select id="refreshSelect">
-          <option value="30000">30s</option><option value="60000">1m</option>
-          <option value="120000">2m</option><option value="180000" selected>3m</option>
+          <option value="30000">30s</option>
+          <option value="60000">1m</option>
+          <option value="120000">2m</option>
+          <option value="180000" selected>3m</option>
           <option value="300000">5m</option>
         </select>
       </label>
-      <label class="tog"><input type="checkbox" id="toggleAllZones"/> ALL zones</label>
-      <label class="tog"><input type="checkbox" id="toggleShowAll"/> Show ALL trackers</label>
-      <label class="tog"><input type="checkbox" id="toggleSwapMap"/> Swap Lat/Lon</label>
-      <label class="tog"><input type="checkbox" id="toggleHeat"/> Heatmap</label>
-      <label class="tog"><input type="checkbox" id="toggleDark"/> Dark Mode</label>
-      <input type="text" id="searchBox" placeholder="Search truck…" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line)" />
-      <select id="sortSelect">
-        <option value="zone">Sort: Zone</option>
-        <option value="dwell">Sort: Dwell</option>
-        <option value="speed">Sort: Speed</option>
-      </select>
+      <label class="tog"><input type="checkbox" id="toggleAllZones" /> Use ALL zones</label>
+      <label class="tog"><input type="checkbox" id="toggleShowAll" /> Show ALL trackers</label>
+      <label class="tog"><input type="checkbox" id="toggleSwapMap" /> Swap Lat/Lon</label>
       <button class="btn primary" id="pickZones">Choose zones</button>
       <button class="btn" id="testBtn">Run once</button>
-      <button class="btn" id="exportBtn">Export CSV</button>
       <span id="counts" class="badge">–</span>
       <span id="groupb" class="badge">Group: –</span>
       <span id="authb" class="badge">Auth: –</span>
     </div>
+
     <div id="grid"></div>
     <div id="map"></div>
-    <div id="alerts"><strong>Alerts</strong><br/></div>
+
     <details class="debug" open>
       <summary>Diagnostics</summary>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0">
@@ -122,8 +105,84 @@
     </details>
   </main>
 
+  <!-- Crash logger -->
+  <script>
+    (function(){
+      function add(m){var el=document.getElementById('dbg-log'); if(el){el.textContent+=(el.textContent?'\n':'')+m;}}
+      window.addEventListener('error', function(e){ add('❌ JS ERROR: '+ e.message + ' @ ' + e.filename + ':' + e.lineno); });
+      window.addEventListener('unhandledrejection', function(e){ var r=e.reason||{}; add('❌ PROMISE: ' + (r.stack||r.message||String(r))); });
+    })();
+  </script>
+
+  <!-- Babel for ES5 support -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
   <!-- Main App -->
-  <script src="assets/app.js"></script>
+  <script type="text/babel" data-presets="env">
+    /* ============================== CONFIG ================================ */
+    const API = { eu: "https://api.eu.navixy.com/v2", us: "https://api.us.navixy.com/v2" };
+    const API_KEY_FALLBACK = "39736582e2058803e90919b91fd5e5f9";
+    const TRACKER_GROUP_NAME = "Onelogix Linehaul Trucks";
+    const LOOKBACK_HOURS = 240;
+    const HISTORY_PAGE_SIZE = 400, HISTORY_MAX_PAGES = 20;
+    const DWELL_THRESHOLD_MIN = 30;
+    const PINNED_ZONE_IDS = new Set(["3068175","860454","3068293"]);
+
+    const qs = new URLSearchParams(location.search);
+    const SESSION_KEY = qs.get("session_key") || qs.get("sid") || null;
+    const HASH_KEY = qs.get("hash") || null;
+    const AUTH_MODE = SESSION_KEY ? "session_key" : (HASH_KEY ? "hash" : "api_key_fallback");
+    document.getElementById("authb").textContent = `Auth: ${AUTH_MODE}`;
+
+    const dbg = (m)=>{const el=document.getElementById("dbg-log"); el.textContent=(el.textContent?el.textContent+"\n":"")+m; console.log(m);};
+    const apiBase = () => API[document.getElementById("cluster").value || "eu"];
+
+    function setBadge(id,txt){ const el=document.getElementById(id); if(el) el.textContent=txt; }
+    function hhmm(mins){ const h=Math.floor(mins/60), m=mins%60; return h?`${h}h ${m}m`:`${m}m`; }
+
+    /* ============================== RENDER CARDS ================================ */
+    function renderCards(zonesMap, trackers, allZones) {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+
+      allZones.forEach(function (zone) {
+        const name = zone.label || `Zone ${zone.id}`;
+        const list = (zonesMap[name] || []).sort((a, b) => b.mins - a.mins);
+
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `<h3>${name} (${list.length})</h3>`;
+
+        if (list.length === 0) {
+          const emptyRow = document.createElement("div");
+          emptyRow.className = "truck";
+          emptyRow.style.color = "var(--muted)";
+          emptyRow.textContent = "No trucks inside";
+          div.appendChild(emptyRow);
+        } else {
+          list.forEach(function (t) {
+            const meta = trackers.find((x) => String(x.id) === String(t.tid));
+            const label = (meta && (meta.label || meta.name)) || `#${t.tid}`;
+            const cls = t.mins >= DWELL_THRESHOLD_MIN ? "warn" : "ok";
+
+            const row = document.createElement("div");
+            row.className = `truck ${cls}`;
+            row.innerHTML = `<span>${label}</span><span>${hhmm(t.mins)}</span>`;
+            row.onclick = function () { centerOnTracker(t.tid); };
+            div.appendChild(row);
+          });
+        }
+
+        grid.appendChild(div);
+      });
+    }
+
+    /* ============================== TODO: Fetch & Map ================================ */
+    // NOTE: keep all your existing functions for states, zones, map, etc.
+    // They will feed into renderCards(zonesMap, trackers, zonesNorm);
+
+  </script>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </body>
 </html>
-

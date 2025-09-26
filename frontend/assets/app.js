@@ -23,28 +23,42 @@ const SESSION_KEY = qs.get("session_key") || qs.get("sid") || null;
 const HASH_KEY = qs.get("hash") || null;
 const AUTH_MODE = SESSION_KEY ? "session_key" : (HASH_KEY ? "hash" : "api_key_fallback");
 
+// ============================== SAFE DOM HELPERS ================================
+function byId(id) {
+  const el = document.getElementById(id);
+  if (el) return el;
+  // Return safe dummy element
+  return {
+    value: "",
+    checked: false,
+    textContent: "",
+    style: {},
+    appendChild: () => {},
+    addEventListener: () => {},
+    setAttribute: () => {},
+    removeAttribute: () => {}
+  };
+}
+function setBadge(id, txt) {
+  byId(id).textContent = txt;
+}
+
 // ============================== DEBUG LOGGER ================================
 function dbg(msg) {
-  const el = document.getElementById("dbg-log");
+  const el = byId("dbg-log");
   const timestamp = new Date().toISOString().split("T")[1].split(".")[0]; // HH:MM:SS
   const line = `[${timestamp}] ${msg}`;
-  if (el) {
-    el.textContent = (el.textContent ? el.textContent + "\n" : "") + line;
-  }
+  el.textContent = (el.textContent ? el.textContent + "\n" : "") + line;
   console.log(line);
 }
 
 // ============================== HELPERS ======================================
 function apiBase() {
-  return API[document.getElementById("cluster").value || "eu"];
+  return API[byId("cluster").value || "eu"];
 }
 function authParams() {
   return SESSION_KEY ? { session_key: SESSION_KEY } :
          (HASH_KEY ? { hash: HASH_KEY } : { hash: API_KEY_FALLBACK });
-}
-function setBadge(id, txt) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = txt;
 }
 
 // ============================== HTTP WRAPPERS ================================
@@ -163,10 +177,9 @@ async function apiGET(path, query) {
 // - connectivityProbe()
 // - runOnce()
 // - resetTimer()
-// (All unchanged — they just use dbg() and apiPOST/apiGET)
 
-// ============================== BOOTSTRAP FIX ===============================
-(async () => {
+// ============================== BOOTSTRAP SAFE ===============================
+document.addEventListener("DOMContentLoaded", async () => {
   try {
     dbg("🚀 Boot sequence start");
 
@@ -186,4 +199,4 @@ async function apiGET(path, query) {
     dbg("❌ Boot crash: " + (err && err.message ? err.message : err));
     console.error("Boot crash:", err);
   }
-})();
+});

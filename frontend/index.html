@@ -6,16 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    :root {
-      --card:#fff;
-      --ink:#111;
-      --muted:#667;
-      --line:#e6e8eb;
-      --ok:#1a7f37;
-      --warn:#d92d20;
-      --bg:#f5f7fb;
-      --brand:#1f6feb;
-    }
+    :root { --card:#fff; --ink:#111; --muted:#667; --line:#e6e8eb; --ok:#1a7f37; --warn:#d92d20; --bg:#f5f7fb; --brand:#1f6feb; }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,Arial}
     header{padding:14px 18px;border-bottom:1px solid var(--line);background:#fff}
@@ -43,15 +34,6 @@
     th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
     th{background:#f7f9ff;color:#334}
     .small{font-size:12px;color:#555}
-    .pill{display:inline-block;padding:2px 6px;border:1px solid #ccd;border-radius:999px;background:#fff}
-    .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
-    .modal.open{display:flex}
-    .panel{width:min(960px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:12px;border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.2)}
-    .panel header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
-    .panel .body{padding:12px 16px}
-    .panel .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px}
-    .zoneRow{border:1px solid var(--line);border-radius:10px;padding:8px}
-    .panel .foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:#fafbff}
   </style>
 </head>
 <body>
@@ -105,84 +87,62 @@
     </details>
   </main>
 
-  <!-- Crash logger -->
-  <script>
-    (function(){
-      function add(m){var el=document.getElementById('dbg-log'); if(el){el.textContent+=(el.textContent?'\n':'')+m;}}
-      window.addEventListener('error', function(e){ add('❌ JS ERROR: '+ e.message + ' @ ' + e.filename + ':' + e.lineno); });
-      window.addEventListener('unhandledrejection', function(e){ var r=e.reason||{}; add('❌ PROMISE: ' + (r.stack||r.message||String(r))); });
-    })();
-  </script>
-
-  <!-- Babel for ES5 support -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Main App -->
   <script type="text/babel" data-presets="env">
-    /* ============================== CONFIG ================================ */
     const API = { eu: "https://api.eu.navixy.com/v2", us: "https://api.us.navixy.com/v2" };
     const API_KEY_FALLBACK = "39736582e2058803e90919b91fd5e5f9";
     const TRACKER_GROUP_NAME = "Onelogix Linehaul Trucks";
-    const LOOKBACK_HOURS = 240;
-    const HISTORY_PAGE_SIZE = 400, HISTORY_MAX_PAGES = 20;
-    const DWELL_THRESHOLD_MIN = 30;
-    const PINNED_ZONE_IDS = new Set(["3068175","860454","3068293"]);
-
-    const qs = new URLSearchParams(location.search);
-    const SESSION_KEY = qs.get("session_key") || qs.get("sid") || null;
-    const HASH_KEY = qs.get("hash") || null;
-    const AUTH_MODE = SESSION_KEY ? "session_key" : (HASH_KEY ? "hash" : "api_key_fallback");
-    document.getElementById("authb").textContent = `Auth: ${AUTH_MODE}`;
 
     const dbg = (m)=>{const el=document.getElementById("dbg-log"); el.textContent=(el.textContent?el.textContent+"\n":"")+m; console.log(m);};
     const apiBase = () => API[document.getElementById("cluster").value || "eu"];
-
     function setBadge(id,txt){ const el=document.getElementById(id); if(el) el.textContent=txt; }
     function hhmm(mins){ const h=Math.floor(mins/60), m=mins%60; return h?`${h}h ${m}m`:`${m}m`; }
 
-    /* ============================== RENDER CARDS ================================ */
-    function renderCards(zonesMap, trackers, allZones) {
-      const grid = document.getElementById("grid");
-      grid.innerHTML = "";
+    /* ==== MOCK fetch until API is wired ==== */
+    async function fetchZones(){ return [{id:1,label:"Depot"},{id:2,label:"Highway"}]; }
+    async function fetchTrackers(){ return [{id:101,label:"Truck A"},{id:102,label:"Truck B"}]; }
+    function buildZonesMap(){ return {"Depot":[{tid:101,mins:80}], "Highway":[]}; }
 
-      allZones.forEach(function (zone) {
-        const name = zone.label || `Zone ${zone.id}`;
-        const list = (zonesMap[name] || []).sort((a, b) => b.mins - a.mins);
-
-        const div = document.createElement("div");
-        div.className = "card";
-        div.innerHTML = `<h3>${name} (${list.length})</h3>`;
-
-        if (list.length === 0) {
-          const emptyRow = document.createElement("div");
-          emptyRow.className = "truck";
-          emptyRow.style.color = "var(--muted)";
-          emptyRow.textContent = "No trucks inside";
-          div.appendChild(emptyRow);
+    function renderCards(zonesMap, trackers, allZones){
+      const grid=document.getElementById("grid"); grid.innerHTML="";
+      allZones.forEach(zone=>{
+        const name=zone.label||`Zone ${zone.id}`;
+        const list=(zonesMap[name]||[]).sort((a,b)=>b.mins-a.mins);
+        const div=document.createElement("div");
+        div.className="card";
+        div.innerHTML=`<h3>${name} (${list.length})</h3>`;
+        if(!list.length){
+          const empty=document.createElement("div");
+          empty.className="truck"; empty.style.color="var(--muted)";
+          empty.textContent="No trucks inside";
+          div.appendChild(empty);
         } else {
-          list.forEach(function (t) {
-            const meta = trackers.find((x) => String(x.id) === String(t.tid));
-            const label = (meta && (meta.label || meta.name)) || `#${t.tid}`;
-            const cls = t.mins >= DWELL_THRESHOLD_MIN ? "warn" : "ok";
-
-            const row = document.createElement("div");
-            row.className = `truck ${cls}`;
-            row.innerHTML = `<span>${label}</span><span>${hhmm(t.mins)}</span>`;
-            row.onclick = function () { centerOnTracker(t.tid); };
+          list.forEach(t=>{
+            const meta=trackers.find(x=>String(x.id)===String(t.tid));
+            const label=(meta&&(meta.label||meta.name))||`#${t.tid}`;
+            const cls=t.mins>=30?"warn":"ok";
+            const row=document.createElement("div");
+            row.className=`truck ${cls}`;
+            row.innerHTML=`<span>${label}</span><span>${hhmm(t.mins)}</span>`;
             div.appendChild(row);
           });
         }
-
         grid.appendChild(div);
       });
     }
 
-    /* ============================== TODO: Fetch & Map ================================ */
-    // NOTE: keep all your existing functions for states, zones, map, etc.
-    // They will feed into renderCards(zonesMap, trackers, zonesNorm);
+    async function runOnce(){
+      dbg("🚀 Run sequence");
+      const trackers=await fetchTrackers();
+      const zones=await fetchZones();
+      const zonesMap=buildZonesMap();
+      renderCards(zonesMap,trackers,zones);
+      setBadge("updated","Updated "+new Date().toLocaleTimeString());
+    }
 
+    document.getElementById("testBtn").addEventListener("click", runOnce);
+    runOnce();
   </script>
-
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </body>
 </html>

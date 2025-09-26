@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/assets/styles.css" />
+  <style>
+    #map {
+      height: 500px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+  </style>
 </head>
 <body>
   <header><h1>Depot Dashboard – Live Zones</h1></header>
@@ -30,6 +38,9 @@
       <label class="tog"><input type="checkbox" id="toggleSwapMap" /> Swap Lat/Lon</label>
       <span id="authb" class="badge">Auth: –</span>
     </div>
+
+    <!-- NEW: Map container -->
+    <div id="map"></div>
 
     <h3>Tracker States</h3>
     <table id="stateTable">

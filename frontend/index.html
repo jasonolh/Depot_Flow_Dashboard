@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <title>Depot Dashboard – Live Zones</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/assets/styles.css" />
   <style>
-    #map {
-      height: 500px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      margin: 16px 0;
-    }
+    body { margin:0; font:14px system-ui, sans-serif; background:#f5f7fb; }
+    header { padding:12px 16px; border-bottom:1px solid #ddd; background:#fff; }
+    h1 { margin:0; font-size:20px; }
+    main { padding:16px; max-width:1280px; margin:0 auto; }
+    #map { height:520px; border:1px solid #ddd; border-radius:8px; margin:16px 0; }
+    .badge { background:#eee; padding:4px 8px; border-radius:6px; margin-right:6px; }
+    details.debug { margin-top:14px; }
+    pre { background:#0b1221; color:#e6edf3; padding:12px; border-radius:8px; overflow:auto; }
+    table { border-collapse:collapse; width:100%; background:#fff; margin-top:16px; }
+    th, td { padding:6px 10px; border:1px solid #ddd; font-size:13px; }
+    th { background:#f2f4ff; text-align:left; }
   </style>
 </head>
 <body>
@@ -20,42 +24,167 @@
   <main>
     <div class="statusbar">
       <span id="updated" class="badge">Loading…</span>
-      <label class="tog">Cluster 
-        <select id="cluster">
-          <option value="eu" selected>EU</option>
-          <option value="us">US</option>
-        </select>
-      </label>
-      <label class="tog">Refresh 
-        <select id="refreshSelect">
-          <option value="30000">30s</option>
-          <option value="60000">1m</option>
-          <option value="120000">2m</option>
-          <option value="180000" selected>3m</option>
-          <option value="300000">5m</option>
-        </select>
-      </label>
-      <label class="tog"><input type="checkbox" id="toggleSwapMap" /> Swap Lat/Lon</label>
+      Cluster <select id="cluster"><option value="eu">EU</option><option value="us">US</option></select>
+      Refresh <select id="refreshSelect">
+        <option value="30000">30s</option>
+        <option value="60000">1m</option>
+        <option value="120000">2m</option>
+        <option value="180000" selected>3m</option>
+        <option value="300000">5m</option>
+      </select>
+      <label><input type="checkbox" id="toggleSwapMap" /> Swap Lat/Lon</label>
       <span id="authb" class="badge">Auth: –</span>
     </div>
 
-    <!-- NEW: Map container -->
     <div id="map"></div>
 
     <h3>Tracker States</h3>
-    <table id="stateTable">
-      <thead>
-        <tr><th>ID</th><th>Label</th><th>zone_ids</th><th>zone_labels</th>
-            <th>Lat</th><th>Lon</th><th>Speed</th><th>Updated</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <table id="stateTable"><thead>
+      <tr><th>ID</th><th>Label</th><th>zone_ids</th><th>zone_labels</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Updated</th></tr>
+    </thead><tbody></tbody></table>
 
-    <h3>Diagnostics</h3>
-    <pre id="dbg-log">Booting…</pre>
+    <details class="debug" open>
+      <summary>Diagnostics</summary>
+      <pre id="dbg-log">Booting…</pre>
+    </details>
   </main>
 
+  <!-- Crash logger -->
+  <script>
+    function dbg(m){ 
+      const el=document.getElementById("dbg-log"); 
+      el.textContent += (el.textContent? "\n":"") + `[${new Date().toLocaleTimeString()}] ${m}`; 
+      console.log(m); 
+    }
+    window.addEventListener('error', e => dbg("❌ JS ERROR: "+ e.message));
+    window.addEventListener('unhandledrejection', e => dbg("❌ PROMISE: "+ (e.reason?.message||e.reason)));
+  </script>
+
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="/static/assets/app.js"></script>
+  <script>
+    /* ================= CONFIG ================== */
+    const API = { eu:"https://api.eu.navixy.com/v2", us:"https://api.us.navixy.com/v2" };
+    const API_KEY_FALLBACK="39736582e2058803e90919b91fd5e5f9";
+    const TRACKER_GROUP_NAME="Onelogix Linehaul Trucks";
+    let REFRESH_MS=180000;
+
+    const qs=new URLSearchParams(location.search);
+    const SESSION_KEY=qs.get("session_key")||null;
+    const HASH_KEY=qs.get("hash")||null;
+    const AUTH_MODE=SESSION_KEY?"session_key":(HASH_KEY?"hash":"api_key_fallback");
+    document.getElementById("authb").textContent="Auth: "+AUTH_MODE;
+
+    function authParams(){
+      return SESSION_KEY?{session_key:SESSION_KEY}:(HASH_KEY?{hash:HASH_KEY}:{hash:API_KEY_FALLBACK});
+    }
+    function apiBase(){ return API[document.getElementById("cluster").value||"eu"]; }
+
+    async function apiPOST(path, body){
+      dbg("📡 POST "+path);
+      const r=await fetch(apiBase()+path,{
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify(Object.assign({},authParams(),body||{}))
+      });
+      return r.json();
+    }
+
+    async function fetchTrackerGroupIdByName(name){
+      const out=await apiPOST("/tracker/group/list",{});
+      const g=(out.list||[]).find(x=> (x.name||"").toLowerCase()===name.toLowerCase());
+      return g?.id||null;
+    }
+    async function fetchTrackersInGroup(name){
+      const all=(await apiPOST("/tracker/list",{})).list||[];
+      const gid=await fetchTrackerGroupIdByName(name);
+      return gid? all.filter(t=>String(t.group_id)===String(gid)) : all;
+    }
+    async function fetchStates(ids){
+      if(!ids.length) return {};
+      const res=await apiPOST("/tracker/get_states",{trackers:ids});
+      return res.states||{};
+    }
+
+    /* ================ RENDER MAP ================ */
+    function renderMap(states, trackers){
+      try {
+        if (!window.map){
+          window.map=L.map("map").setView([-29.95,30.95],6);
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            {maxZoom:19, attribution:'&copy; <a href="https://osm.org">OSM</a>'}).addTo(window.map);
+        }
+        if (window.markers) window.markers.forEach(m=>window.map.removeLayer(m));
+        window.markers=[];
+
+        const bounds=[];
+        Object.entries(states).forEach(([tid,st])=>{
+          if(!st?.gps?.location) return;
+          const lat=st.gps.location.lat, lng=st.gps.location.lng;
+          if(!lat||!lng) return;
+          const meta=trackers.find(t=>String(t.id)===String(tid));
+          const label=meta?(meta.label||meta.name||tid):tid;
+          const speed=st.gps.speed||0;
+          const marker=L.marker([lat,lng]).addTo(window.map);
+          marker.bindPopup(`<b>${label}</b><br>ID:${tid}<br>Speed:${speed}`);
+          window.markers.push(marker);
+          bounds.push([lat,lng]);
+        });
+        if(bounds.length) window.map.fitBounds(bounds,{padding:[30,30]});
+        dbg(`🗺 Map rendered with ${window.markers.length} trackers`);
+      } catch(e){ dbg("❌ Map render error: "+e.message); }
+    }
+
+    /* ================ RENDER TABLE ================ */
+    function renderStateTable(states, trackers){
+      const tb=document.querySelector("#stateTable tbody");
+      tb.innerHTML="";
+      Object.entries(states).forEach(([tid,st])=>{
+        const meta=trackers.find(t=>String(t.id)===String(tid));
+        const loc=st?.gps?.location||{};
+        const ids=(st?.gps?.zone_ids||[]).join(", ");
+        const labels=(st?.gps?.zone_labels||[]).join(", ");
+        tb.innerHTML+=`<tr>
+          <td>${tid}</td><td>${meta?(meta.label||meta.name):""}</td>
+          <td>${ids}</td><td>${labels}</td>
+          <td>${loc.lat?.toFixed?.(5)||""}</td>
+          <td>${loc.lng?.toFixed?.(5)||""}</td>
+          <td>${st?.gps?.speed||""}</td>
+          <td>${st?.gps?.updated||st?.updated||""}</td>
+        </tr>`;
+      });
+    }
+
+    /* ================ MAIN LOOP ================ */
+    async function runOnce(){
+      dbg("🚀 runOnce start");
+      try {
+        const trackers=await fetchTrackersInGroup(TRACKER_GROUP_NAME);
+        const states=await fetchStates(trackers.map(t=>t.id));
+        renderStateTable(states, trackers);
+        renderMap(states, trackers);
+        document.getElementById("updated").textContent="Updated "+new Date().toLocaleTimeString();
+      } catch(e){ dbg("❌ runOnce error: "+e.message); }
+      dbg("✅ runOnce finished");
+    }
+
+    /* Timer */
+    function resetTimer(){
+      if(window.timer) clearInterval(window.timer);
+      window.timer=setInterval(runOnce, REFRESH_MS);
+      dbg(`⏱ Timer reset to ${REFRESH_MS/1000}s`);
+    }
+    document.getElementById("refreshSelect").addEventListener("change",e=>{
+      REFRESH_MS=Number(e.target.value||180000); resetTimer();
+    });
+
+    /* Boot */
+    (async function boot(){
+      dbg("🚀 Boot sequence start");
+      dbg("🔑 Auth mode: "+AUTH_MODE);
+      dbg("🌐 Cluster: "+apiBase());
+      await runOnce();
+      resetTimer();
+      dbg("🏁 Boot sequence finished");
+    })();
+  </script>
 </body>
 </html>
